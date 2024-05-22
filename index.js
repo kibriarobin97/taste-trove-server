@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const jwt = require('jsonwebtoken');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 require('dotenv').config();
 const app = express();
@@ -27,10 +28,56 @@ async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
 
+    const userCollection = client.db('tasteTroveDB').collection('users')
     const menuCollection = client.db('tasteTroveDB').collection('menu')
     const cartsCollection = client.db('tasteTroveDB').collection('carts')
     const reviewsCollection = client.db('tasteTroveDB').collection('reviews')
 
+    //jwt related api
+    app.post('/jwt', async(req, res) => {
+      const user = req.body;
+      const token = jwt.sign(user, process.env.ACCESS_TOKEN-SECRET, {expiresIn: '1hr'})
+      res.send({token})
+    })
+
+
+    // users related api
+    app.get('/users', async(req, res) => {
+      const result = await userCollection.find().toArray();
+      res.send(result)
+    })
+
+    app.post('/users', async(req, res) => {
+      const user = req.body;
+      const query = {email: user.email}
+      const isExist = await userCollection.findOne(query)
+      if(isExist){
+        return res.send({insertedId: null})
+      }
+      const result = await userCollection.insertOne(user);
+      res.send(result)
+    })
+
+    app.delete('/users/:id', async(req, res) => {
+      const id = req.params.id;
+      const query = {_id: new ObjectId(id)}
+      const result = await userCollection.deleteOne(query)
+      res.send(result)
+    })
+
+    app.patch('/users/admin/:id', async(req, res) => {
+      const id = req.params.id;
+      const filter = {_id: new ObjectId(id)}
+      const updatedDoc = {
+        $set: {
+          role: 'admin'
+        }
+      }
+      const result = await userCollection.updateOne(filter, updatedDoc)
+      res.send(result)
+    })
+
+    //menu related api
     app.get('/menu', async(req, res) => {
         const result = await menuCollection.find().toArray()
         res.send(result)
