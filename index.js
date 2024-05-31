@@ -32,6 +32,7 @@ async function run() {
     const userCollection = client.db('tasteTroveDB').collection('users')
     const menuCollection = client.db('tasteTroveDB').collection('menu')
     const cartsCollection = client.db('tasteTroveDB').collection('carts')
+    const paymentCollection = client.db('tasteTroveDB').collection('payments')
     const reviewsCollection = client.db('tasteTroveDB').collection('reviews')
 
     //jwt related api
@@ -190,7 +191,7 @@ async function run() {
       res.send(result)
     })
 
-    // payment intent
+    // payment intent api
     app.post('/create-payment-intent', async(req, res) => {
       const {price} = req.body;
       const amount = parseInt(price * 100)
@@ -201,6 +202,58 @@ async function run() {
       })
       res.send({
         clientSecret: paymentIntent.client_secret
+      })
+    })
+
+    app.get('/payments/:email',verifyToken, async(req, res) => {
+      const email = req.params.email;
+      const query = {email: email}
+      if(email !== req.decoded.email){
+        return res.status(403).send({message: 'forbidden access'})
+      }
+      const result = await paymentCollection.find(query).toArray()
+      res.send(result)
+    })
+
+    app.post('/payments', async(req, res) => {
+      const payment = req.body;
+      const paymentResult = await paymentCollection.insertOne(payment);
+      console.log('payment info', payment)
+      const query = {_id: {
+        $in: payment.cartIds.map(id => new ObjectId(id))
+      }}
+      const deleteResult = await cartsCollection.deleteMany(query)
+      res.send({paymentResult, deleteResult})
+    })
+
+    // state or analytics
+    app.get('/admin-stats',verifyToken, verifyAdmin, async(req, res) => {
+      const users = await userCollection.estimatedDocumentCount();
+      const menuItems = await menuCollection.estimatedDocumentCount();
+      const orders = await paymentCollection.estimatedDocumentCount();
+
+      // this is not a best way
+      // const payments = await paymentCollection.find().toArray();
+      // const revenue = payments.reduce((total, payment) => total + payment.price, 0)
+
+      const result = await paymentCollection.aggregate([
+        {
+          $group: {
+            _id: null,
+            totalRevenue: {
+              $sum: '$price'
+            }
+          }
+        }
+      ]).toArray();
+
+      const revenue = result.length > 0 ? result[0].totalRevenue : 0;
+
+      res.send({
+        users,
+        menuItems,
+        orders,
+        revenue
       })
     })
 
